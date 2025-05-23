@@ -70,13 +70,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Création des onglets
-tabs = st.tabs(["Prédiction", "Caractéristiques", "À propos"])
+tabs = st.tabs(["Prédiction", "Caractéristiques"])
 
 # Fonction pour charger ou créer le modèle
 @st.cache_resource
 def load_model(model_type="RandomForest"):
     model_path = f'model_{model_type.lower()}.pkl'
     scaler_path = 'scaler.pkl'
+    
+    # Force retraining for DBSCAN model
+    if model_type == "DBSCAN" and os.path.exists(model_path):
+        os.remove(model_path)
     
     # Si les modèles n'existent pas, on les entraîne
     if not (os.path.exists(model_path) and os.path.exists(scaler_path)):
@@ -112,7 +116,7 @@ def load_model(model_type="RandomForest"):
                 model = KMeans(n_clusters=2, random_state=42)
                 model.fit(X_scaled)
             elif model_type == "DBSCAN":
-                # Paramètres recommandés pour un clustering pertinent sur ce dataset
+                # Paramètres pour des clusters plus larges
                 model = DBSCAN(eps=2.0, min_samples=5)
                 model.fit(X_scaled)
             else:
@@ -267,17 +271,16 @@ with tabs[0]:
     with col1:
         st.markdown('<div class="section-title">Analyse descriptive du groupe</div>', unsafe_allow_html=True)
         if model_type == "KMeans":
+            # Determine risk level based on diabetic ratio in cluster
+            diabetic_ratio_val = float(diabetic_ratio[cluster])
+            risk_class = "high-risk" if cluster == 0 else "low-risk"  # Cluster 0 is high risk (55%), Cluster 1 is low risk (17%)
+            
             st.markdown(f"""
-            <div class="result-box low-risk">
+            <div class="result-box {risk_class}">
                 <h2>🧩 Groupe assigné : <span style='color:#6A36FC'>Cluster {cluster}</span></h2>
             </div>
             """, unsafe_allow_html=True)
             st.markdown(f"<b>Taille du groupe :</b> {cluster_size} patients", unsafe_allow_html=True)
-            # Correction robuste du formatage
-            try:
-                diabetic_ratio_val = float(diabetic_ratio[cluster])
-            except Exception:
-                diabetic_ratio_val = float(diabetic_ratio)
             st.markdown(f"<b>Proportion de diabétiques dans ce groupe :</b> {diabetic_ratio_val:.1%}", unsafe_allow_html=True)
             st.markdown("""
             <div class='stInfo'>
@@ -350,11 +353,6 @@ with tabs[0]:
                     st.metric(
                         label="Type de profil",
                         value="Atypique" if is_outlier else "Standard"
-                    )
-                with col1b:
-                    st.metric(
-                        label="Mesure de similarité",
-                        value=f"{prediction_proba[0][1]:.1%}"
                     )
         
         # Interprétation des résultats
@@ -471,7 +469,7 @@ with tabs[0]:
                 }
             ))
             
-            gauge_title = "Risque"
+            gauge_title = ""
             if model_type not in ["RandomForest", "LogisticRegression", "SVM"]:
                 if model_type == "KMeans":
                     gauge_title = "Proportion dans le groupe"
@@ -511,13 +509,7 @@ with tabs[0]:
                 """, unsafe_allow_html=True)
         else:
             # For KMeans and DBSCAN, show only a summary card
-            st.markdown('<div class="section-title">Résumé du groupe</div>', unsafe_allow_html=True)
-            st.markdown("""
-            <div class='stInfo'>
-            Aucun graphique de risque n'est affiché pour les méthodes de clustering non supervisées.<br>
-            Consultez les informations descriptives à gauche pour comprendre la composition de votre groupe.
-            </div>
-            """, unsafe_allow_html=True)
+            pass
 
 # Onglet Caractéristiques
 with tabs[1]:
@@ -591,7 +583,7 @@ with tabs[1]:
             y='Feature',
             orientation='h',
             color='Importance',
-            color_continuous_scale='Viridis'
+            color_continuous_scale=[[0, '#87CEEB'], [0.3, '#4682B4'], [0.7, '#1E90FF'], [1, '#000080']]  # Custom blue gradient from light to dark blue
         )
         
         fig.update_layout(
@@ -601,72 +593,4 @@ with tabs[1]:
         )
         
         st.plotly_chart(fig, use_container_width=True)
-
-# Onglet À propos
-with tabs[2]:
-    st.markdown('<div class="section-title">À propos du projet</div>', unsafe_allow_html=True)
-    
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("""
-    ### Prédiction du diabète
-    
-    Cette application utilise des algorithmes d'apprentissage automatique pour prédire le risque de diabète en se basant sur des caractéristiques médicales.
-    
-    **Objectifs du projet**:
-    - Développer un modèle prédictif pour identifier les personnes à risque de diabète
-    - Comparer différentes approches d'apprentissage automatique (supervisées et non supervisées)
-    - Offrir un outil d'aide à la décision pour les professionnels de la santé
-    
-    **Source des données**: [Pima Indians Diabetes Database](https://www.kaggle.com/uciml/pima-indians-diabetes-database)
-    
-    > **Note importante**: Cette application est conçue à des fins éducatives uniquement et ne remplace pas un avis médical professionnel.
-    """)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Caractéristiques du modèle sélectionné
-    st.markdown('<div class="section-title">Caractéristiques du modèle</div>', unsafe_allow_html=True)
-    
-    # Informations sur le modèle sélectionné
-    model_info = {
-        'RandomForest': {
-            'description': "Un ensemble d'arbres de décision qui vote collectivement pour faire une prédiction.",
-            'avantages': ["Robuste aux valeurs aberrantes", "Bonne performance sur divers types de données", "Capture les relations non linéaires"],
-            'inconvenients': ["Moins interprétable que les modèles linéaires", "Peut souffrir de surapprentissage"]
-        },
-        'LogisticRegression': {
-            'description': "Un modèle linéaire classique qui estime la probabilité d'appartenance à une classe.",
-            'avantages': ["Simple et interprétable", "Efficace pour les relations linéaires", "Moins sujet au surapprentissage"],
-            'inconvenients': ["Ne capture pas les relations complexes", "Moins performant sur certaines données"]
-        },
-        'SVM': {
-            'description': "Un modèle qui trouve un hyperplan optimal pour séparer les classes dans un espace de haute dimension.",
-            'avantages': ["Efficace dans les espaces de haute dimension", "Versatile grâce aux noyaux", "Robuste"],
-            'inconvenients': ["Difficile à interpréter", "Sensible au choix des hyperparamètres"]
-        },
-        'KMeans': {
-            'description': "Un algorithme de clustering qui partitionne les données en k groupes en minimisant la variance au sein de chaque groupe.",
-            'avantages': ["Simple et rapide", "Facile à implémenter", "Fonctionne bien sur des clusters de forme sphérique"],
-            'inconvenients': ["Nécessite de spécifier le nombre de clusters", "Sensible aux valeurs aberrantes", "Suppose des clusters de taille similaire"]
-        },
-        'DBSCAN': {
-            'description': "Un algorithme de clustering basé sur la densité qui identifie les clusters comme des zones de haute densité séparées par des zones de faible densité.",
-            'avantages': ["Ne nécessite pas de spécifier le nombre de clusters", "Peut identifier les valeurs aberrantes", "Peut trouver des clusters de formes arbitraires"],
-            'inconvenients': ["Sensible aux paramètres de densité", "Difficulté avec les clusters de densités variables", "Moins efficace dans les espaces de haute dimension"]
-        }
-    }
-    
-    current_model = model_info[model_type]
-    
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader(f"Modèle: {model_type}")
-    st.markdown(f"**Description**: {current_model['description']}")
-    
-    st.markdown("**Avantages**:")
-    for adv in current_model['avantages']:
-        st.markdown(f"- {adv}")
-    
-    st.markdown("**Limitations**:")
-    for inc in current_model['inconvenients']:
-        st.markdown(f"- {inc}")
-    st.markdown('</div>', unsafe_allow_html=True)
 
