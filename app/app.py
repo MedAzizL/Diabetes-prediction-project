@@ -72,6 +72,32 @@ st.markdown("""
 # Création des onglets
 tabs = st.tabs(["Prédiction", "Caractéristiques"])
 
+# Get the directory of the current script
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Get the parent directory (project root)
+project_root = os.path.dirname(current_dir)
+# Construct the path to diabetes.csv
+data_path = os.path.join(project_root, 'data', 'diabetes.csv')
+
+# Alternative fallback paths for different environments
+possible_paths = [
+    data_path,  # ../data/diabetes.csv from app directory
+    os.path.join(current_dir, '..', 'data', 'diabetes.csv'),  # relative path
+    'data/diabetes.csv',  # direct path if data is in root
+    '../data/diabetes.csv',  # original relative path
+]
+
+# Find the correct data path
+diabetes_data_path = None
+for path in possible_paths:
+    if os.path.exists(path):
+        diabetes_data_path = path
+        break
+
+if diabetes_data_path is None:
+    st.error("Could not find diabetes.csv file. Please check the file location.")
+    st.stop()
+
 # Fonction pour charger ou créer le modèle
 @st.cache_resource
 def load_model(model_type="RandomForest"):
@@ -86,7 +112,7 @@ def load_model(model_type="RandomForest"):
     if not (os.path.exists(model_path) and os.path.exists(scaler_path)):
         with st.spinner(f"Entraînement du modèle {model_type} en cours..."):
             # Charger les données
-            df = pd.read_csv('../data/diabetes.csv')
+            df = pd.read_csv(diabetes_data_path)
             
             # Prétraitement
             df_clean = df.copy()
@@ -225,7 +251,7 @@ if model_type in ["RandomForest", "LogisticRegression", "SVM"]:
 else:
     if model_type == "KMeans":
         cluster = model.predict(user_input_scaled)[0]
-        df = pd.read_csv('../data/diabetes.csv')
+        df = pd.read_csv(diabetes_data_path)
         df_clean = df.copy()
         for column in ['Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI']:
             df_clean[column] = df_clean[column].replace(0, np.nan)
@@ -239,7 +265,7 @@ else:
         prediction = [None]  # Pas de prédiction
         prediction_proba = np.array([[1 - diabetic_ratio[cluster], diabetic_ratio[cluster]]])
     elif model_type == "DBSCAN":
-        df = pd.read_csv('../data/diabetes.csv')
+        df = pd.read_csv(diabetes_data_path)
         df_clean = df.copy()
         for column in ['Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI']:
             df_clean[column] = df_clean[column].replace(0, np.nan)
